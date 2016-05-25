@@ -18,6 +18,7 @@ module Generics.SOP.JSON (
     -- * UpdateFromJSON and co
   , UpdateFromJSON(..)
   , gupdateFromJSON
+  , gupdateFromJSON'
   , replaceWithJSON
   , parseWith
     -- * Re-exports
@@ -30,6 +31,7 @@ import Control.Arrow (first)
 import Control.Monad
 import Data.Aeson (ToJSON(..), FromJSON(..), Value(..))
 import Data.Aeson.Types (Parser, modifyFailure)
+import qualified Data.Aeson.Types as Aeson
 import Data.List (intercalate)
 import Data.Text (Text)
 import qualified Data.HashMap.Strict as HashMap
@@ -324,6 +326,69 @@ gupdateRecord fields lenses = withObject "Object" $ \obj -> do
     update (K Nothing)  _ = K $ return id
     update (K (Just v)) l = K $ do f <- updateFromJSON v
                                    return $ \a -> modify l (f, a)
+
+{-------------------------------------------------------------------------------
+  Generic instance for UpdateFromJSON using Aeson.Options
+-------------------------------------------------------------------------------}
+
+-- | Altenative implementation that respects the conversions used by Aesons 'Aeson.Options'
+gupdateFromJSON' :: forall a xs. (Generic a, HasDatatypeInfo a, All UpdateFromJSON xs, Code a ~ '[xs])
+                => Aeson.Options -> Value -> Parser (a -> a)
+gupdateFromJSON' opts v = do
+  case jsonInfo' (Proxy :: Proxy a) opts of
+    JsonRecord _ fields :* Nil -> gupdateRecord fields glenses v
+    _ :* Nil -> error "cannot update non-record type"
+    _        -> error "inaccessible"
+
+jsonInfoFor' :: forall xs. Aeson.Options -> DatatypeName -> (ConstructorName -> Tag) -> ConstructorInfo xs -> JsonInfo xs
+jsonInfoFor' _    _ tag (Infix n _ _)   = JsonMultiple (tag n)
+jsonInfoFor' _    _ tag (Constructor n) =
+  case shape :: Shape xs of
+    ShapeNil           -> JsonZero     n
+    ShapeCons ShapeNil -> JsonOne      (tag n)
+    _                  -> JsonMultiple (tag n)
+jsonInfoFor' opts _ tag (Record n fields) =
+    JsonRecord (tag n) (hliftA fieldName fields)
+  where
+    fieldName :: FieldInfo a -> K String a
+    fieldName (FieldInfo name) = K (Aeson.fieldLabelModifier opts name)
+
+jsonInfo' :: forall a. (HasDatatypeInfo a, SListI (Code a))
+         => Proxy a -> Aeson.Options -> NP JsonInfo (Code a)
+jsonInfo' pa opts =
+  case datatypeInfo pa of
+    Newtype _ n cs  ->
+      case Aeson.unwrapUnaryRecords opts of
+        True -> JsonOne NoTag :* Nil
+        False -> ((jsonInfoFor' opts n (tagSingle)) cs) :* Nil
+    ADT     _ n cs -> hliftA (jsonInfoFor' opts n (tag cs)) cs
+  where
+    tagSingle :: ConstructorName -> Tag
+    tagSingle = case Aeson.unwrapUnaryRecords opts of
+                   True ->  const NoTag
+                   False -> tagMultiple
+
+    tagMultiple :: ConstructorName -> Tag
+    tagMultiple = Tag . Aeson.constructorTagModifier opts
+    tag :: NP ConstructorInfo (Code a) -> ConstructorName -> Tag
+    tag cs | _ :* Nil <- cs = tagSingle
+
+           | otherwise      = tagMultiple
+
+
+{-gupdateRecord' :: forall (xs :: [*]) (a :: *). All UpdateFromJSON xs
+              => NP (K String) xs -> NP (GLens (->) (->) a) xs -> Value -> Parser (a -> a)
+gupdateRecord' fields lenses = withObject "Object" $ \obj -> do
+    values :: NP (K (Maybe Value)) xs <- lineup fields obj
+    updates <- hcollapse `liftM` hsequenceK (hcliftA2 pu update values lenses)
+    return $ foldr (.) id updates
+  where
+    update :: forall b. UpdateFromJSON b
+           => K (Maybe Value) b -> GLens (->) (->) a b -> K (Parser (a -> a)) b
+    update (K Nothing)  _ = K $ return id
+    update (K (Just v)) l = K $ do f <- updateFromJSON v
+                                   return $ \a -> modify l (f, a)-}
+
 
 {-------------------------------------------------------------------------------
   Auxiliary
