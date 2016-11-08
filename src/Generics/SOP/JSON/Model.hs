@@ -26,9 +26,9 @@ import Data.Text (Text)
 class JsonModel (a :: *) where
   jsonModel :: Tagged a Value
 
-{-------------------------------------------------------------------------------
+{-
   Some standard instances
--------------------------------------------------------------------------------}
+-}
 
 instance JsonModel UTCTime where
   jsonModel = Tagged $ String "UTCTime"
@@ -76,9 +76,9 @@ instance
                   model = jsonModel
               in Tagged $ Array $ Vector.fromList [ untag model, Null ]
 
-{-------------------------------------------------------------------------------
+{-
   Generic instance
--------------------------------------------------------------------------------}
+-}
 
 -- | Generic computation of the JSON model
 --
@@ -104,7 +104,7 @@ constructorModel info@(JsonOne t) = tagModel t $
 constructorModel (JsonMultiple t) = tagModel t $
     object [ "Tuple" .= (tupleModel . hcollapse $ aux) ]
   where
-    aux :: All JsonModel xs => NP (K Value) xs
+    aux ::  NP (K Value) xs
     aux = hcpure p jsonModelK
 constructorModel (JsonRecord t fs) = tagModel t $
     object [ "Object" .= (objectModel . hcollapse . hcliftA p aux $ fs) ]

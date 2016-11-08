@@ -42,9 +42,9 @@ import Generics.SOP
 import Generics.SOP.Lens
 import Generics.SOP.Util.PartialResult
 
-{-------------------------------------------------------------------------------
+{-
   Configuration
--------------------------------------------------------------------------------}
+-}
 
 type JsonFieldName = String
 type JsonTagName   = String
@@ -69,7 +69,7 @@ defaultJsonOptions = JsonOptions {
   , jsonTagName   = id
   }
 
-{-------------------------------------------------------------------------------
+{-
   The JSON view of the world
 
   We translate the metadata independent of the encoding/decoding. This has two
@@ -77,7 +77,7 @@ defaultJsonOptions = JsonOptions {
   types!) are driven by this metadata; and two, we can give a readable
   description of this metadata to give the user a static description of what
   the JSON encoding of their datatype will look like.
--------------------------------------------------------------------------------}
+-}
 
 -- | Constructor tag
 --
@@ -132,9 +132,9 @@ jsonInfo pa opts =
     tag cs | _ :* Nil <- cs = const NoTag
            | otherwise      = Tag . jsonTagName opts
 
-{-------------------------------------------------------------------------------
+{-
   Encoder
--------------------------------------------------------------------------------}
+-}
 
 gtoJSON :: forall a. (Generic a, HasDatatypeInfo a, All2 ToJSON (Code a))
         => JsonOptions -> a -> Value
@@ -160,9 +160,9 @@ gtoJSON' (JsonRecord tag fields) cs =
   . HashMap.fromList
   . hcollapse
   $ hcliftA2 pt (\(K field) (I a) -> K (Text.pack field, toJSON a)) fields cs
-gtoJSON' _ _ = error "unreachable"
+--gtoJSON' _ _ = error "unreachable"
 
-{-------------------------------------------------------------------------------
+{-
   Decoder
 
   NOTE: We use 'mzero' in various places, rather than failing with a more
@@ -175,7 +175,7 @@ gtoJSON' _ _ = error "unreachable"
   so that we first find the right constructor, and then attempt to parse it.
 
   TODO: Maybe return a Parser of a Parser in parseValues?
--------------------------------------------------------------------------------}
+-}
 
 gparseJSON :: forall a. (Generic a, HasDatatypeInfo a, All2 FromJSON (Code a))
            => JsonOptions -> Value -> Parser a
@@ -232,16 +232,16 @@ parseValues (JsonRecord tag fields) =
   where
     pairFieldName (K x) (K y) = K (Just x, y)
 
-untag :: (Monad m, Functor m) => Tag -> (Value -> Partial m a) -> Value -> Partial m a
+untag :: (Monad m) => Tag -> (Value -> Partial m a) -> Value -> Partial m a
 untag NoTag   f = f
 untag (Tag n) f = withObject "Object" $ \obj ->
   case obj of
     [(n', v)] | n' == n -> partialResult $ f v
     _                   -> fail $ "Expected tag " ++ show n
 
-{-------------------------------------------------------------------------------
+{-
   Updating values
--------------------------------------------------------------------------------}
+-}
 
 -- | For some values we can support "updating" the value with a "partial"
 -- JSON value; record types are the prime example (and the only one supported
@@ -300,9 +300,9 @@ instance
 #endif
   UpdateFromJSON String   where updateFromJSON = replaceWithJSON
 
-{-------------------------------------------------------------------------------
+{-
   Generic instance for UpdateFromJSON
--------------------------------------------------------------------------------}
+-}
 
 -- | Construct a function that updates a value of some record type, given
 -- a JSON object with new values for some (or none, or all) of the fields
@@ -312,7 +312,7 @@ gupdateFromJSON opts v = do
   case jsonInfo (Proxy :: Proxy a) opts of
     JsonRecord _ fields :* Nil -> gupdateRecord fields glenses v
     _ :* Nil -> error "cannot update non-record type"
-    _        -> error "inaccessible"
+    --_        -> error "inaccessible"
 
 gupdateRecord :: forall (xs :: [*]) (a :: *). All UpdateFromJSON xs
               => NP (K String) xs -> NP (GLens (->) (->) a) xs -> Value -> Parser (a -> a)
@@ -327,9 +327,9 @@ gupdateRecord fields lenses = withObject "Object" $ \obj -> do
     update (K (Just v)) l = K $ do f <- updateFromJSON v
                                    return $ \a -> modify l (f, a)
 
-{-------------------------------------------------------------------------------
+{-
   Generic instance for UpdateFromJSON using Aeson.Options
--------------------------------------------------------------------------------}
+-}
 
 -- | Altenative implementation that respects the conversions used by Aesons 'Aeson.Options'
 gupdateFromJSON' :: forall a xs. (Generic a, HasDatatypeInfo a, All UpdateFromJSON xs, Code a ~ '[xs])
@@ -338,7 +338,7 @@ gupdateFromJSON' opts v = do
   case jsonInfo' (Proxy :: Proxy a) opts of
     JsonRecord _ fields :* Nil -> gupdateRecord fields glenses v
     _ :* Nil -> error "cannot update non-record type"
-    _        -> error "inaccessible"
+    --_        -> error "inaccessible"
 
 jsonInfoFor' :: forall xs. Aeson.Options -> DatatypeName -> (ConstructorName -> Tag) -> ConstructorInfo xs -> JsonInfo xs
 jsonInfoFor' _    _ tag (Infix n _ _)   = JsonMultiple (tag n)
@@ -390,9 +390,9 @@ gupdateRecord' fields lenses = withObject "Object" $ \obj -> do
                                    return $ \a -> modify l (f, a)-}
 
 
-{-------------------------------------------------------------------------------
+{-
   Auxiliary
--------------------------------------------------------------------------------}
+-}
 
 -- | Given a product of keys in a particular order, and a list of values indexed
 -- by keys, reorder the second list in the order specified by the first list.
@@ -430,9 +430,9 @@ tagValue :: Tag -> Value -> K Value a
 tagValue NoTag   v = K v
 tagValue (Tag t) v = K $ Object $ HashMap.fromList [(Text.pack t, v)]
 
-{-------------------------------------------------------------------------------
+{-
   Constraint proxies
--------------------------------------------------------------------------------}
+-}
 
 pt :: Proxy ToJSON
 pt = Proxy
@@ -449,9 +449,9 @@ allpf = Proxy
 pu :: Proxy UpdateFromJSON
 pu = Proxy
 
-{-------------------------------------------------------------------------------
+{-
   Adaptation of some of Aeson's combinators
--------------------------------------------------------------------------------}
+-}
 
 withObject :: Monad m => String -> ([(String, Value)] -> m a) -> Value -> m a
 withObject _        f (Object obj) = f $ map (first Text.unpack) (HashMap.toList obj)
